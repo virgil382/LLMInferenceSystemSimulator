@@ -1,4 +1,4 @@
-# Disaggregated PD Inference System Specification
+# Disaggregated PD Inference System
 
 ## 1. System Parameters
 - **N**: Batch Size (Number of concurrent requests).

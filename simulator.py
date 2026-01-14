@@ -10,7 +10,7 @@ class CommChannel:
     _comm_db: dict[str, dict[str, tuple[float, float]]] = {
         "NVLink": {"bw_gbps": (300, 400), "lat_us": (1, 2)},
         "PCIe Gen4": {"bw_gbps": (12, 15), "lat_us": (18, 25)},
-        "PCI Express 5.0 x16": {"bw_gbps": (55, 60), "lat_us": (10, 15)},
+        "PCIe Gen5 x16": {"bw_gbps": (55, 60), "lat_us": (10, 15)},
 
         # RTX 6000 Ada (Gen4) on a Gen5 Switched Fabric
         "PCIe G4-on-G5-Switch": {
