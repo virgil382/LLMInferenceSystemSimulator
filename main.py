@@ -1,41 +1,80 @@
 from simulator import CommNetworkSimulator, DataBatch, ComputeJob, SimulatedSystem, CommChannel, GPU, LLM
+from gantt_visualizer import InferenceGanttChart
+from sweep_visualizer import ParameterSweepVisualizer
 
 class DisaggregatedPDSystem(SimulatedSystem):
-    def __init__(self, llm: LLM, gpu: GPU, pp_prefill: int, pp_decode: int, 
-                 num_ib_cards: int, n: int, t: int, m: int):
+    def __init__(self, llm: LLM, prefill_gpu: GPU, decode_gpu: GPU, pp_degree: int, 
+                 num_prefill_ib_cards: int, N: int, T: int, M: int, vram_limit_ratio: float = 0.75):
         self.llm = llm
-        self.gpu = gpu
-        self.pp_p = pp_prefill
-        self.pp_d = pp_decode
-        self.num_ib = num_ib_cards
-        self.N = n  # Batch size
-        self.T = t  # Context length
-        self.M = m  # Prefill chunk size
+        self.prefill_gpu = prefill_gpu
+        self.decode_gpu = decode_gpu
+        self.pp_p = pp_degree
+        self.pp_d = pp_degree
+        self.num_prefill_ib_cards = num_prefill_ib_cards
+        self.N = N  # Batch size
+        self.T = T  # Context length
+        self.M = M  # Prefill chunk size
+        self.vram_limit_ratio = vram_limit_ratio
         
         # Internal state tracking
         self.current_prefill_token_idx = 0
         self.prefill_complete = False
+        self.completed_transfers = set()
         
         # Hardware setup
-        self.p_gpu_lanes = [CommChannel("PCIe Gen5 x16") for _ in range(pp_prefill)]
-        self.d_gpu_lanes = [CommChannel("PCIe Gen5 x16") for _ in range(pp_decode)]
-        self.p_ib_lanes = [CommChannel("PCIe Gen5 x16") for _ in range(num_ib_cards)]
-        self.p_ib_cables = [CommChannel("Infiniband NDR") for _ in range(num_ib_cards)]
-        self.d_ib_cables = [CommChannel("Infiniband NDR") for _ in range(pp_decode)]
-        self.d_eth_lanes = [CommChannel("PCIe Gen4") for _ in range(pp_decode)]
-        self.d_eth_cables = [CommChannel("Ethernet 100G") for _ in range(pp_decode)]
+        self.p_gpu_lanes = [CommChannel("PCIe Gen5 x16") for _ in range(self.pp_p)]
+        self.d_gpu_lanes = [CommChannel("PCIe Gen5 x16") for _ in range(self.pp_d)]
+        self.p_ib_lanes = [CommChannel("PCIe Gen5 x16") for _ in range(self.num_prefill_ib_cards)]
+        self.p_ib_cables = [CommChannel("Infiniband NDR") for _ in range(self.num_prefill_ib_cards)]
+        self.d_ib_cables = [CommChannel("Infiniband NDR") for _ in range(self.pp_d)]
+        self.d_eth_lanes = [CommChannel("PCIe Gen4") for _ in range(self.pp_d)]
+        self.d_eth_cables = [CommChannel("Ethernet 100G") for _ in range(self.pp_d)]
 
-    def _get_activation_size(self):
+        # VRAM Validation
+        # 1. Weights
+        # Assuming parameters are evenly distributed across layers, and layers are distributed across ranks.
+        # Note: If L is not divisible by pp_degree, integer division floors it, which is approximate but valid for checks.
+        params_per_rank = (self.llm.W // self.llm.L) * (self.llm.L // self.pp_p)
+        weight_bytes = params_per_rank * self.llm.B
+        
+        # 2. KV Cache (at full context T)
+        kv_bytes = self.llm.KV(self.N, self.T) // self.pp_p
+        
+        total_mem_b = weight_bytes + kv_bytes
+        
+        # Check Prefill
+        prefill_limit = self.prefill_gpu.vram_b * self.vram_limit_ratio
+        if total_mem_b > prefill_limit:
+            raise ValueError(f"Prefill GPU OOM (> {self.vram_limit_ratio*100:.1f}%): Rank needs {total_mem_b/1e9:.2f} GB, but allowed is {prefill_limit/1e9:.2f} GB (Total: {self.prefill_gpu.vram_b/1e9:.2f} GB)")
+        self.prefill_vram_util = (total_mem_b / self.prefill_gpu.vram_b) * 100
+        
+        # Check Decode
+        decode_limit = self.decode_gpu.vram_b * self.vram_limit_ratio
+        if total_mem_b > decode_limit:
+             raise ValueError(f"Decode GPU OOM (> {self.vram_limit_ratio*100:.1f}%): Rank needs {total_mem_b/1e9:.2f} GB, but allowed is {decode_limit/1e9:.2f} GB (Total: {self.decode_gpu.vram_b/1e9:.2f} GB)")
+        self.decode_vram_util = (total_mem_b / self.decode_gpu.vram_b) * 100
+
+    def A_prefill(self):
+        """
+        Return the size (in bytes) of the inter-rank activations for the prefill cluster
+        """
         # N * M tokens * Hidden Size * Bytes per param
-        return self.N * self.M * self.llm.H_model * self.llm.B
+        return self.N * self.llm.B * self.M * self.llm.H_model
 
-    def _get_kv_share_size(self):
+    def KV_handoff(self):
+        """
+        Return the size of the KV-cache share calculated by a prefill rank to be sent to the
+        corresponding decode cluster rank.
+        """
         # KV cache for N * M tokens for a single pipeline rank
         return self.llm.KV(self.N, self.M) // self.pp_p
 
     def T_prefill(self, spec_prefill_enabled: bool = False):
         """
-        More accurate prefill time calculation, including quadratic attention FLOPS and memory bandwidth.
+        Calculates prefill time for a single chunk.
+        Note: For small batch/chunk sizes, this is dominated by the time to stream 
+        all model weights from VRAM (Memory Bound), which explains why it is much larger
+        than the transfer time of just the activations.
         """
         N = self.N
         T = self.M  # Chunk size for prefill
@@ -43,33 +82,55 @@ class DisaggregatedPDSystem(SimulatedSystem):
         L_rank = self.llm.L // self.pp_p
 
         # 1. Compute Time (FLOPS)
-        # Projections: Q, K, V, and O projections + MLP (up/down/gate)
-        # Most models approximate total linear FLOPS as 2 * N * T * W_per_rank
-        # But to be explicit about the H^2 in the attention block projections:
-        # flops_attn_projections = L_rank * (8 * N * T * H_model**2)
-
-        # Linear FLOPS (MLP + Attention Projections)
+        # Linear FLOPS (MLP + Attention Projections) - dominating term for compute
         flops_linear = 2 * N * T * ((self.llm.W // self.llm.L) * L_rank)
 
-        # Quadratic Attention FLOPS (The QK^T and Score * V part)
-        # Standard formula: 2 * N * L_rank * H_model * T^2
-        flops_quadratic = 2 * N * L_rank * H_model * (T ** 2)
+        # Quadratic Attention FLOPS 
+        # Correct factor is 4 * N * L * H * T^2 (2 for QK^T + 2 for SV)
+        flops_quadratic = 4 * N * L_rank * H_model * (T ** 2)
 
         # A constant factor representing the reduction in attention complexity
         spec_prefill_multiplier = 0.4 if spec_prefill_enabled else 1.0
         flops_quadratic *= spec_prefill_multiplier
-
         total_flops = flops_linear + flops_quadratic
-        t_compute = total_flops / self.gpu.flops
+        t_compute = total_flops / self.prefill_gpu.flops
 
         # 2. Memory Time (VRAM BW)
-        # Must read weights + write the resulting KV cache
+        # We must read ALL weights for every chunk because they don't fit in cache.
         weight_bytes = ((self.llm.W // self.llm.L) * L_rank) * self.llm.B
         kv_bytes = self.llm.KV(N, T) // self.pp_p
         vram_util = 0.80
-        t_memory = (weight_bytes + kv_bytes) / (self.gpu.vram_bw_bps * vram_util)
+        t_memory = (weight_bytes + kv_bytes) / (self.prefill_gpu.vram_bw_bps * vram_util)
 
+        # Returns the bottleneck
         return max(t_compute, t_memory)
+
+    def T_decode(self):
+        """
+        Estimate decode time for one token step on a single rank.
+        Dominated by VRAM bandwidth (loading weights + KV cache).
+        """
+        # Weights per rank
+        weight_bytes = ((self.llm.W // self.llm.L) * (self.llm.L // self.pp_d)) * self.llm.B
+        # KV cache estimate (full context for worst case)
+        kv_bytes = self.llm.KV(self.N, self.T) // self.pp_d
+        
+        # Compute Time
+        flops = 2 * self.N * (self.llm.W // self.pp_d)  # Linear layers
+        flops += 2 * self.N * self.T * (self.llm.H_model // self.pp_d) * self.llm.H_model # Attention
+        t_compute = flops / self.decode_gpu.flops
+        
+        # Memory Time
+        t_memory = (weight_bytes + kv_bytes) / (self.decode_gpu.vram_bw_bps * 0.8)
+        
+        return max(t_compute, t_memory)
+
+    def A_decode(self):
+        """
+        Return the size (in bytes) of the inter-rank activations for the decode cluster (1 token)
+        """
+        # Activation size for 1 token decode
+        return self.N * 1 * self.llm.H_model * self.llm.B
 
     def start(self, simulator):
         # Trigger the first prefill rank compute
@@ -77,18 +138,77 @@ class DisaggregatedPDSystem(SimulatedSystem):
         simulator.add_compute(ComputeJob(f"P_Rank_0_Chunk_0", compute_time))
 
     def on_compute_complete(self, simulator, job):
+        """
+        Callback triggered when a compute task finishes.
+        Delegates to specific prefill or decode handlers based on job name.
+        """
         parts = job.name.split("_")
         if "P_Rank" in job.name:
             r_idx = int(parts[2])
             c_idx = int(parts[4])
-            self.on_prefill_compute_complete(simulator, r_idx, c_idx)
+            self._handle_prefill_compute_complete(simulator, r_idx, c_idx)
         elif "D_Rank" in job.name:
             r_idx = int(parts[2])
-            self.on_decode_compute_complete(simulator, r_idx)
+            s_idx = int(parts[4])
+            self._handle_decode_compute_complete(simulator, r_idx, s_idx)
 
-    def on_prefill_compute_complete(self, simulator, r_idx, c_idx):
+    def on_data_transfer_complete(self, simulator, batch):
+        """
+        Callback triggered when a data transfer finishes.
+
+        Returns:
+            ComputeJob | None: The next compute job to schedule immediately, or None.
+        """
+        self.completed_transfers.add(batch.name)
+
+        if "Prefill_Act" in batch.name:
+            # Format: Prefill_Act_Rank_X_Chunk_Y
+            parts = batch.name.split("_")
+            rank_idx = int(parts[3])
+            chunk_idx = int(parts[5])
+            return self._try_schedule_next_prefill_compute_job(simulator, rank_idx, chunk_idx)
+
+        elif "Handoff" in batch.name:
+            # Format: Handoff_Rank_X_Chunk_Y
+            parts = batch.name.split("_")
+            rank_idx = int(parts[2])
+            chunk_idx = int(parts[4])
+            return self._try_schedule_next_prefill_compute_job(simulator, rank_idx, chunk_idx)
+
+        elif "Decode_Act" in batch.name:
+            return self._handle_decode_transfer(batch.name)
+        
+        return None
+
+    def _try_schedule_next_prefill_compute_job(self, simulator, rank_idx, chunk_idx):
+        handoff_key = f"Handoff_Rank_{rank_idx}_Chunk_{chunk_idx}"
+        act_key = f"Prefill_Act_Rank_{rank_idx}_Chunk_{chunk_idx}"
+        
+        handoff_done = handoff_key in self.completed_transfers
+        act_done = act_key in self.completed_transfers
+        
+        # If not last rank, we need both Activations (next rank) and Handoff (decode) to complete
+        if rank_idx + 1 < self.pp_p:
+            if handoff_done and act_done:
+                comp_time = self.T_prefill()
+                return ComputeJob(f"P_Rank_{rank_idx+1}_Chunk_{chunk_idx}", comp_time)
+        
+        # If last rank, we only have Handoff (no next rank activation)
+        else:
+            if handoff_done:
+                # Last prefill rank finished a chunk
+                # Note: This simple counter assumes in-order completion of chunks at the last rank
+                self.current_prefill_token_idx += self.M
+                if self.current_prefill_token_idx >= self.T and not self.prefill_complete:
+                    self.prefill_complete = True
+                    # Start Decode Phase
+                    return ComputeJob(f"D_Rank_0_Step_0", self.T_decode())
+                    
+        return None
+
+    def _handle_prefill_compute_complete(self, simulator, r_idx, c_idx):
         # 1. Start Handoff to Decode Cluster (Path 2)
-        ib_idx = r_idx % self.num_ib
+        ib_idx = r_idx % self.num_prefill_ib_cards
         path2 = [
             self.p_gpu_lanes[r_idx],    # GPU -> PLX
             self.p_ib_lanes[ib_idx],    # PLX -> IB Card
@@ -96,100 +216,124 @@ class DisaggregatedPDSystem(SimulatedSystem):
             self.d_ib_cables[r_idx],    # IB Switch -> Decode IB Card
             self.d_gpu_lanes[r_idx]     # IB Card -> Decode GPU
         ]
+        kv_handoff = self.KV_handoff()
         simulator.add_batch(DataBatch(f"Handoff_Rank_{r_idx}_Chunk_{c_idx}", 
-                                      self._get_kv_share_size(), path2))
+                                      kv_handoff, path2))
 
         # 2. Start Inter-rank Activation (Path 1)
         if r_idx + 1 < self.pp_p:
-            path1 = [self.p_gpu_lanes[r_idx], self.p_gpu_lanes[r_idx+1]]  # GPU -> PLX -> Next GPU
+            path1 = [
+                self.p_gpu_lanes[r_idx],    # GPU -> PLX
+                self.p_gpu_lanes[r_idx+1]   # PLX -> Next GPU
+            ]
+            a_prefill = self.A_prefill()
             simulator.add_batch(DataBatch(f"Prefill_Act_Rank_{r_idx}_Chunk_{c_idx}", 
-                                          self._get_activation_size(), path1))
+                                          a_prefill, path1))
         
         # 3. If rank 0, check if we need to start next prefill chunk (Pipeline overlap)
         if r_idx == 0 and (c_idx + 1) * self.M < self.T:
             comp_time = self.T_prefill()
             simulator.add_compute(ComputeJob(f"P_Rank_0_Chunk_{c_idx+1}", comp_time))
 
-    def on_decode_compute_complete(self, simulator, r_idx):
+    def _handle_decode_compute_complete(self, simulator, r_idx, s_idx):
         # Decode Logic: Path 3 (Inter-server Ethernet)
         if r_idx + 1 < self.pp_d:
             path3 = [
-                self.d_gpu_lanes[r_idx], 
-                self.d_eth_lanes[r_idx], 
-                self.d_eth_cables[r_idx], 
-                self.d_eth_cables[r_idx+1], 
-                self.d_eth_lanes[r_idx+1], 
-                self.d_gpu_lanes[r_idx+1]
+                self.d_gpu_lanes[r_idx],      # GPU -> PLX
+                self.d_eth_lanes[r_idx],      # PLX -> Eth Card
+                self.d_eth_cables[r_idx],     # Eth Card -> Eth Switch
+                self.d_eth_cables[r_idx+1],   # Eth Switch -> Next Eth Card
+                self.d_eth_lanes[r_idx+1],    # Eth Card -> PLX
+                self.d_gpu_lanes[r_idx+1]     # PLX -> Next GPU
             ]
-            # Activation size for 1 token decode
-            dec_act_size = self.N * 1 * self.llm.H_model * self.llm.B
-            simulator.add_batch(DataBatch(f"Decode_Act_Rank_{r_idx}", dec_act_size, path3))
+            simulator.add_batch(DataBatch(f"Decode_Act_Rank_{r_idx}_Step_{s_idx}", self.A_decode(), path3))
 
-    def on_data_transfer_complete(self, simulator, batch):
-        # Logic to trigger next compute rank or handoff
-        parts = batch.name.split("_")
-        rank_idx = int(parts[2])
-        chunk_idx = int(parts[4])
-
-        if "Prefill_Act" in batch.name:
-            # Move to next prefill compute
-            if rank_idx + 1 < self.pp_p:
-                comp_time = self.T_prefill()
-                return ComputeJob(f"P_Rank_{rank_idx+1}_Chunk_{chunk_idx}", comp_time)
-            else:
-                # Last prefill rank finished a chunk
-                self.current_prefill_token_idx += self.M
-                if self.current_prefill_token_idx >= self.T:
-                    self.prefill_complete = True
-                    # Start Decode Phase
-                    return ComputeJob(f"D_Rank_0_Step_0", 0.001) # Trigger first decode
+    def _handle_decode_transfer(self, batch_name):
+        parts = batch_name.split("_")
+        rank_idx = int(parts[3])
+        step_idx = int(parts[5])
         
+        # Move to next decode compute rank
+        if rank_idx + 1 < self.pp_d:
+            return ComputeJob(f"D_Rank_{rank_idx+1}_Step_{step_idx}", self.T_decode())
         return None
 
+    def calculate_ttft(self, simulator):
+        decode_jobs = [job for job in simulator.completed_compute if job.name.startswith("D_Rank")]
+        if not decode_jobs:
+            return None
+        decode_jobs_sorted = sorted(decode_jobs, key=lambda j: j.end_time)
+        return decode_jobs_sorted[0].start_time
+
+    def calculate_tpot(self, simulator):
+        decode_jobs = [job for job in simulator.completed_compute if job.name.startswith("D_Rank")]
+        if not decode_jobs:
+            return None
+        decode_jobs_sorted = sorted(decode_jobs, key=lambda j: j.end_time)
+        first_decode_job = decode_jobs_sorted[0]
+        last_decode_job = decode_jobs_sorted[-1]
+        return last_decode_job.end_time - first_decode_job.start_time
 
 # --- Setup and Run ---
-my_llm = LLM.from_name("LLaMA-3.1-70B")
-my_gpu = GPU.from_name("NVIDIA H100")
 
-# System: 8 Prefill Ranks, 4 Decode Ranks, 2 IB Cards in Prefill Server
-# N=32, Context=2048, Chunk Size=512
-pd_system = DisaggregatedPDSystem(
-    llm=my_llm,
-    gpu=my_gpu,
-    pp_prefill=8,
-    pp_decode=4,
-    num_ib_cards=2,
-    n=32,
-    t=2048,
-    m=512
-)
+if __name__ == "__main__":
+    # Common Configuration
+    # We use H100s to ensure we have enough VRAM for larger contexts in the sweep
+    system_config = {
+        "llm": LLM.from_name("LLaMA-3.1-70B"),
+        "prefill_gpu": GPU.from_name("NVIDIA H100"),
+        "decode_gpu": GPU.from_name("NVIDIA H100"),
+        "pp_degree": 4,  # Increased PP degree to fit model
+        "num_prefill_ib_cards": 1,
+        "N": 1,
+        "vram_limit_ratio": 0.95 
+    }
 
-sim = CommNetworkSimulator()
-pd_system.start(sim)
-sim.run(pd_system)
+    # 1. Single Run
+    # Override T and M for specific scenario
+    run_config = system_config.copy()
+    run_config.update({"T": 4096, "M": 128})
+    
+    pd_system = DisaggregatedPDSystem(**run_config)
 
-# --- TTFT and TPOT extraction ---
+    sim = CommNetworkSimulator()
+    pd_system.start(sim)
+    sim.run(pd_system)
 
-# Collect decode and prefill jobs.
-decode_jobs = [job for job in sim.completed_compute if job.name.startswith("D_Rank")]
-decode_jobs_sorted = sorted(decode_jobs, key=lambda j: j.end_time)
+    # --- TTFT and TPOT extraction ---
+    ttft = pd_system.calculate_ttft(sim)
+    tpot = pd_system.calculate_tpot(sim)
 
-prefill_jobs = [job for job in sim.completed_compute if job.name.startswith("P_Rank")]
-prefill_jobs_sorted = sorted(prefill_jobs, key=lambda j: j.end_time)
+    if ttft is not None and tpot is not None:
+        print(f"TTFT (Time To First Token): {ttft:.6f} seconds")
+        print(f"TPOT (Time Per Output Token): {tpot:.6f} seconds")
+    else:
+        print("No decode jobs found for TTFT/TPOT calculation.")
 
-# Assign jobs to well-named variables for clarity.
-first_prefill_job = prefill_jobs_sorted[0] if prefill_jobs_sorted else None
-first_decode_job = decode_jobs_sorted[0] if decode_jobs_sorted else None
-last_decode_job = decode_jobs_sorted[-1] if decode_jobs_sorted else None
+    print(f"Total Inference Latency: {sim.current_time:.4f} seconds")
+    print(f"Prefill VRAM Utilization: {pd_system.prefill_vram_util:.2f}%")
+    print(f"Decode VRAM Utilization: {pd_system.decode_vram_util:.2f}%")
 
-# Calculate TTFT and TPOT using extracted jobs.
-if first_decode_job and last_decode_job:
-    ttft = first_decode_job.start_time
-    print(f"TTFT (Time To First Token): {ttft:.6f} seconds")
+    # Visualization
+    visualizer = InferenceGanttChart(pd_system)
+    visualizer.generate(sim)
 
-    tpot = last_decode_job.end_time - first_decode_job.start_time
-    print(f"TPOT (Time Per Output Token): {tpot:.6f} seconds")
-else:
-    print("No decode jobs found for TTFT/TPOT calculation.")
+    # --- Parameter Sweep ---
+    print("\n--- Running Parameter Sweep (3D Plot) ---")
+    
+    # Sweep T from 1024 to 8192 in steps of 1024
+    # M varies from 64 up to T
+    t_sweep_range = range(1024, 8192 + 1, 1024)
+    
+    sweeper = ParameterSweepVisualizer(
+        system_cls=DisaggregatedPDSystem,
+        base_config=system_config,
+        t_range=t_sweep_range,
+        m_start=64,  # Start value for M
+        m_step=128,  # Step size for M
+        m_end=2048   # Optional max value for M
+    )
+    
+    results = sweeper.run_sweep()
+    sweeper.plot_3d(results, output_file="ttft_sweep_3d.png")
 
-print(f"Total Inference Latency: {sim.current_time:.4f} seconds")
