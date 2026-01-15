@@ -7,6 +7,8 @@ from DisaggregatedPDSystemPP import DisaggregatedPDSystemPP
 
 # --- Setup and Run ---
 
+# The system works best with PP=8, T=8192, M=128 for large models like LLaMA-3.1-70B.
+
 if __name__ == "__main__":
     # Common Configuration
     # We use H100s to ensure we have enough VRAM for larger contexts in the sweep
@@ -24,7 +26,7 @@ if __name__ == "__main__":
     # Override T and M for specific scenario
     run_config = system_config.copy()
     run_config.update({"T": 8192, "M": 128})
-    
+
     pd_system = DisaggregatedPDSystemPP(**run_config)
 
     sim = CommNetworkSimulator()
@@ -46,7 +48,7 @@ if __name__ == "__main__":
     print(f"Decode VRAM Utilization: {pd_system.decode_vram_util:.2f}%")
 
     # Visualization
-    visualizer = GanttVisualizer(pd_system)
+    visualizer = GanttVisualizer(pd_system, 1.0)
     visualizer.generate(sim)
 
     # --- Parameter Sweep ---

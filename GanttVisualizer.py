@@ -2,11 +2,13 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
 class GanttVisualizer:
-    def __init__(self, system):
+    def __init__(self, system, chart_duration=None):
         """
         Initialize the visualizer with the target system configuration.
+        Optionally specify the chart's duration (in seconds).
         """
         self.system = system
+        self.chart_duration = chart_duration
 
     def _parse_resource_from_name(self, name):
         # Heuristic to assign a 'row' for the Gantt chart
@@ -106,6 +108,8 @@ class GanttVisualizer:
         ax.legend(handles=handles)
         
         plt.tight_layout()
+        if self.chart_duration is not None:
+            ax.set_xlim(0, self.chart_duration)
         plt.savefig(output_file)
         print(f"Chart saved to {output_file}")
 

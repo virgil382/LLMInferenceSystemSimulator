@@ -243,8 +243,8 @@ class DataBatch:
         self.total_latency = sum(c.latency_s for c in self.path)
         self.latency_remaining = self.total_latency
         
-        self.start_time = None
-        self.end_time = None
+        self.start_time: float | None = None
+        self.end_time: float | None = None
 
 class ComputeJob:
     def __init__(self, name, duration_s):
