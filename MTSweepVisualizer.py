@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from simulator import CommNetworkSimulator
 
-class ParameterSweepVisualizer:
+class MTSweepVisualizer:
     def __init__(self, system_cls, base_config, t_range, m_start=None, m_step=64, m_end=None):
         """
         Initialize the visualizer.
@@ -67,7 +67,7 @@ class ParameterSweepVisualizer:
 
         return results
 
-    def plot_3d(self, results, output_file="ttft_sweep_3d.png"):
+    def plot_3d(self, results, output_file="M_T_TTFT_sweep_3d.png"):
         """
         Generates a 3D surface plot of (T, M) -> TTFT
         """
@@ -89,7 +89,7 @@ class ParameterSweepVisualizer:
         ax = fig.add_subplot(111, projection='3d')
 
         # Scatter plot for data points
-        sc = ax.scatter(ts, ms, ttfts, c=ttfts, cmap='viridis', marker='o')
+        sc = ax.scatter(ts, ms, ttfts, c=ttfts, cmap='viridis', marker='o')  # type: ignore[arg-type] 
         
         # Try to plot a surface as well for better visualization if grid is regular enough
         try:
@@ -113,3 +113,4 @@ class ParameterSweepVisualizer:
         plt.tight_layout()
         plt.savefig(output_file)
         print(f"3D Sweep Chart saved to {output_file}")
+

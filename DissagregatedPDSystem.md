@@ -45,8 +45,8 @@
 
 ## 4. Communication Paths
 
-### Path 1: Prefill Inter-Rank (Local Server)
-*Used for moving activations between pipeline stages $i$ and $i+1$ within the prefill node.*
+### Path 1: Prefill Inter-GPU (Local Server)
+*Used for moving activations between GPUs $i$ and $i+1$ within the prefill node.*
 > **Path**: `[GPU_P[i]_PCI, GPU_P[i+1]_PCI]`
 
 ### Path 2: Prefill-to-Decode Handoff (IB Fabric)
@@ -54,8 +54,8 @@
 *Assumes IB NIC mapping: $k = i \pmod{Num\_IB\_Cards}$.*
 > **Path**: `[GPU_P[i]_PCI, IB_NIC_P[k]_PCI, IB_Cable_P[k], IB_Cable_D[i], GPU_D[i]_PCI]`
 
-### Path 3: Decode Inter-Rank (Ethernet Fabric)
-*Used for moving activations between disaggregated decode stages $j$ and $j+1$.*
+### Path 3: Decode Inter-GPU (Ethernet Fabric)
+*Used for moving activations between decode GPUs $j$ and $j+1$.*
 > **Path**: `[GPU_D[j]_PCI, Eth_NIC_D[j]_PCI, Eth_Cable_D[j], Eth_Cable_D[j+1], Eth_NIC_D[j+1]_PCI, GPU_D[j+1]_PCI]`# Disaggregated PD Inference System Specification
 
 ## 1. System Parameters

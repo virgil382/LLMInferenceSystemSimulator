@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
-class InferenceGanttChart:
+class GanttVisualizer:
     def __init__(self, system):
         """
         Initialize the visualizer with the target system configuration.
