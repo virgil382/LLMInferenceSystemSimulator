@@ -1,4 +1,4 @@
-# Discrete-Event Framework for Modeling Concurrent Communication and Computation in Distributed Systems
+# Discrete-Event Simulation (DES) of Concurrent Communication and Computation in Distributed Systems
 
 ## Abstract
 This document defines a formal framework for simulating the performance of distributed systems characterized by interleaved data movement and computational workloads such as those found in LLM systems. The framework employs a Max-Min Fairness algorithm for bandwidth allocation across shared network segments and a discrete-event callback mechanism to model complex, state-dependent operational sequences.
