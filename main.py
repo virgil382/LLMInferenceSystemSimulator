@@ -68,7 +68,7 @@ if __name__ == "__main__":
     )
     
     results = sweeper.run_sweep()
-    sweeper.plot_3d(results, output_file="M_T_TTFT_sweep_3d.png")
+    sweeper.plot_3d(results, output_file="M_T_TTFT_sweep_3d.html")
 
     # --- PP-T Sweep ---
     print("\n--- Running PP-T Sweep (3D Plot) ---")
@@ -82,5 +82,5 @@ if __name__ == "__main__":
         m_value=64
     )
     ppt_results = ppt_sweeper.run_sweep()
-    ppt_sweeper.plot_3d(ppt_results, output_file="PP_T_TTFT_sweep_3d.png")
+    ppt_sweeper.plot_3d(ppt_results, output_file="PP_T_TTFT_sweep_3d.html")
 

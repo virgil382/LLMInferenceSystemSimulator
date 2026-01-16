@@ -1,6 +1,6 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+import plotly.graph_objects as go
+from utils_env import show_or_save_plotly_figure
 from simulator import CommNetworkSimulator
 
 class PPTSweepVisualizer:
@@ -43,10 +43,11 @@ class PPTSweepVisualizer:
                     continue
         return results
 
-    def plot_3d(self, results, output_file="PP_T_TTFT_sweep_3d.png"):
+    def plot_3d(self, results, output_file="PP_T_TTFT_sweep_3d.html"):
         """
         Generates a 3D surface plot of (PP, T) -> TTFT
         """
+        global np
         if not results:
             print("No results to plot.")
             return
@@ -57,25 +58,48 @@ class PPTSweepVisualizer:
         pps = [r[0] for r in valid_results]
         ts = [r[1] for r in valid_results]
         ttfts = [r[2] for r in valid_results]
-        fig = plt.figure(figsize=(12, 9))
-        ax = fig.add_subplot(111, projection='3d')
-        # type: ignore[arg-type] -- ttfts is a list of floats, which is valid for matplotlib's zs argument
-        sc = ax.scatter(pps, ts, ttfts, c=ttfts, cmap='viridis', marker='o')  # type: ignore[arg-type] 
+        fig = go.Figure()
+        fig.add_trace(go.Scatter3d(
+            x=pps, y=ts, z=ttfts,
+            mode='markers',
+            marker=dict(size=5, color=ttfts, colorscale='Viridis', colorbar=dict(title='TTFT (s)')),
+            name='TTFT Data'
+        ))
+        # Try to plot a surface for regular grid data
         try:
-            ax.plot_trisurf(pps, ts, ttfts, cmap='viridis', alpha=0.5, linewidth=0.2, edgecolor='gray')
+            # Reshape data into grid
+            unique_pps = np.unique(pps)
+            unique_ts = np.unique(ts)
+            grid_pps, grid_ts = np.meshgrid(unique_pps, unique_ts, indexing='ij')
+            grid_ttfts = np.full(grid_pps.shape, np.nan)
+            for i, pp in enumerate(unique_pps):
+                for j, t in enumerate(unique_ts):
+                    for k in range(len(pps)):
+                        if pps[k] == pp and ts[k] == t:
+                            grid_ttfts[i, j] = ttfts[k]
+            # Only plot if grid is fully populated (no nans)
+            if not np.isnan(grid_ttfts).any():
+                fig.add_trace(go.Surface(
+                    x=grid_pps,
+                    y=grid_ts,
+                    z=grid_ttfts,
+                    colorscale='Viridis',
+                    opacity=0.7,
+                    showscale=False,
+                    name='Surface'
+                ))
+            else:
+                print("Grid has missing values, skipping surface plot.")
         except Exception as e:
             print(f"Could not plot surface: {e}")
-        ax.set_xlabel('Pipeline Parallelism (PP)')
-        ax.set_ylabel('Context Length (T)')
-        ax.set_zlabel('TTFT (seconds)')
-        ax.set_title('Impact of PP and T on TTFT (M=64)')
-        fig.colorbar(sc, shrink=0.5, aspect=5, label='TTFT (s)')
-
-        # Rotate the chart clockwise on the vertical axis (adjust azimuth)
-        # Default is usually azim=-60. We'll rotate it by -20 degrees.
-        ax.view_init(elev=20, azim=-20) 
-
-
-        plt.tight_layout()
-        plt.savefig(output_file)
-        print(f"3D Sweep Chart saved to {output_file}")
+        fig.update_layout(
+            scene=dict(
+                xaxis_title='X (Pipeline Parallelism, PP)',
+                yaxis_title='Y (Context Length, T)',
+                zaxis_title='Z (TTFT, seconds)',
+                camera=dict(eye=dict(x=1.5, y=1.5, z=1.0))
+            ),
+            title='Impact of PP and T on TTFT (M=64)',
+            margin=dict(l=0, r=0, b=0, t=40)
+        )
+        show_or_save_plotly_figure(fig, output_file)

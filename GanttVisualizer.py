@@ -1,5 +1,5 @@
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
+import plotly.graph_objects as go
+from utils_env import show_or_save_plotly_figure
 
 class GanttVisualizer:
     def __init__(self, system, chart_duration=None):
@@ -34,12 +34,9 @@ class GanttVisualizer:
             return f"Decode Rank {rank} (Tx Activation)", "Transfer"
         return "Other", "Other"
 
-    def generate(self, sim, output_file="gantt_chart.png"):
-        fig, ax = plt.subplots(figsize=(20, 10))
-        
+    def generate(self, sim, output_file="gantt_chart.html"):
         # Collect all events
         events = []
-        
         for job in sim.completed_compute:
             events.append({
                 "name": job.name,
@@ -47,7 +44,6 @@ class GanttVisualizer:
                 "end": job.end_time,
                 "type": "Compute"
             })
-            
         for batch in sim.completed_batches:
             events.append({
                 "name": batch.name,
@@ -55,61 +51,62 @@ class GanttVisualizer:
                 "end": batch.end_time,
                 "type": "Transfer"
             })
-            
-        # Sort events by time
         events.sort(key=lambda x: x["start"])
-        
+
         # Map resources to Y-axis
         resources = set()
         resource_start_times = {}
-
         for e in events:
             res, _ = self._parse_resource_from_name(e["name"])
             resources.add(res)
             e["resource"] = res
-            
-            # Track start time for sorting
             if res not in resource_start_times:
                 resource_start_times[res] = e["start"]
             else:
                 resource_start_times[res] = min(resource_start_times[res], e["start"])
-
-        # Sort resources by their earliest start time (Reverse=True puts earliest at top)
         sorted_resources = sorted(list(resources), key=lambda r: resource_start_times[r], reverse=True)
         y_map = {res: i for i, res in enumerate(sorted_resources)}
-        
+
         colors = {
             "Compute": "skyblue",
             "Transfer": "orange",
             "Other": "gray"
         }
-        
+
+        fig = go.Figure()
+        bar_height = 0.3  # Reduce row height for Gantt chart
         for e in events:
             y = y_map[e["resource"]]
-            width = e["end"] - e["start"]
             color = colors.get(e["type"], "gray")
-            
-            # Draw bar
-            ax.barh(y, width, left=e["start"], height=0.6, align='center', color=color, edgecolor='black', alpha=0.8)
-            
-            # Add labels for larger blocks?
-            # if width > (sim.current_time * 0.05):
-            #    ax.text(e["start"] + width/2, y, e["name"], ha='center', va='center', fontsize=8, color='black')
+            fig.add_trace(go.Bar(
+                x=[e["end"] - e["start"]],
+                y=[e["resource"]],
+                base=[e["start"]],
+                orientation='h',
+                marker_color=color,
+                name=e["type"],
+                hovertext=f"{e['name']}<br>Start: {e['start']:.3f}s<br>End: {e['end']:.3f}s",
+                hoverinfo="text",
+                width=bar_height
+            ))
 
-        # Formatting
-        ax.set_yticks(range(len(sorted_resources)))
-        ax.set_yticklabels(sorted_resources)
-        ax.set_xlabel("Time (s)")
-        ax.set_title(f"Inference System Gantt Chart (M={self.system.M}, T={self.system.T})")
-        ax.grid(True, axis='x', linestyle='--', alpha=0.7)
-        
-        # Legend
-        handles = [mpatches.Patch(color=c, label=l) for l, c in colors.items()]
-        ax.legend(handles=handles)
-        
-        plt.tight_layout()
+        fig.update_layout(
+            barmode='stack',
+            xaxis_title="Time (s)",
+            yaxis=dict(
+                categoryorder='array',
+                categoryarray=sorted_resources,
+                tickfont=dict(size=12),
+                automargin=True,
+                dtick=1,
+                # Removed invalid categorygap property
+            ),
+            title=f"Inference System Gantt Chart (M={self.system.M}, T={self.system.T})",
+            showlegend=False,
+            height=30 * max(6, len(sorted_resources)),
+            margin=dict(l=120, r=40, t=60, b=40)
+        )
         if self.chart_duration is not None:
-            ax.set_xlim(0, self.chart_duration)
-        plt.savefig(output_file)
-        print(f"Chart saved to {output_file}")
+            fig.update_xaxes(range=[0, self.chart_duration])
+        show_or_save_plotly_figure(fig, output_file)
 

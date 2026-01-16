@@ -1,6 +1,6 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+import plotly.graph_objects as go
+from utils_env import show_or_save_plotly_figure
 from simulator import CommNetworkSimulator
 
 class MTSweepVisualizer:
@@ -67,7 +67,7 @@ class MTSweepVisualizer:
 
         return results
 
-    def plot_3d(self, results, output_file="M_T_TTFT_sweep_3d.png"):
+    def plot_3d(self, results, output_file="M_T_TTFT_sweep_3d.html"):
         """
         Generates a 3D surface plot of (T, M) -> TTFT
         """
@@ -85,32 +85,67 @@ class MTSweepVisualizer:
         ms = [r[1] for r in valid_results]
         ttfts = [r[2] for r in valid_results]
 
-        fig = plt.figure(figsize=(12, 9))
-        ax = fig.add_subplot(111, projection='3d')
-
-        # Scatter plot for data points
-        sc = ax.scatter(ts, ms, ttfts, c=ttfts, cmap='viridis', marker='o')  # type: ignore[arg-type] 
-        
-        # Try to plot a surface as well for better visualization if grid is regular enough
+        fig = go.Figure()
+        fig.add_trace(go.Scatter3d(
+            x=ts, y=ms, z=ttfts,
+            mode='markers',
+            marker=dict(size=5, color=ttfts, colorscale='Viridis', colorbar=dict(title='TTFT (s)')),
+            name='TTFT Data'
+        ))
+        # Try to plot a surface for regular grid data
+        surface_drawn = False
         try:
-            ax.plot_trisurf(ts, ms, ttfts, cmap='viridis', alpha=0.5, linewidth=0.2, edgecolor='gray')
+            # Reshape data into grid
+            unique_ts = np.unique(ts)
+            unique_ms = np.unique(ms)
+            grid_ts, grid_ms = np.meshgrid(unique_ts, unique_ms, indexing='ij')
+            grid_ttfts = np.full(grid_ts.shape, np.nan)
+            for i, t in enumerate(unique_ts):
+                for j, m in enumerate(unique_ms):
+                    for k in range(len(ts)):
+                        if ts[k] == t and ms[k] == m:
+                            grid_ttfts[i, j] = ttfts[k]
+            # Only plot if grid is fully populated (no nans)
+            if not np.isnan(grid_ttfts).any():
+                fig.add_trace(go.Surface(
+                    x=grid_ts,
+                    y=grid_ms,
+                    z=grid_ttfts,
+                    colorscale='Viridis',
+                    opacity=0.7,
+                    showscale=False,
+                    name='Surface'
+                ))
+                surface_drawn = True
+            else:
+                print("Grid has missing values, skipping surface plot.")
         except Exception as e:
             print(f"Could not plot surface: {e}")
-
-        # Labels
-        ax.set_xlabel('Context Length (T)')
-        ax.set_ylabel('Prefill Chunk Size (M)')
-        ax.set_zlabel('TTFT (seconds)')
-        ax.set_title('Impact of Context Length (T) and Chunk Size (M) on TTFT')
-
-        # Add a color bar which maps values to colors.
-        fig.colorbar(sc, shrink=0.5, aspect=5, label='TTFT (s)')
-
-        # Rotate the chart clockwise on the vertical axis (adjust azimuth)
-        # Default is usually azim=-60. We'll rotate it by -20 degrees.
-        ax.view_init(elev=45, azim=-20) 
-
-        plt.tight_layout()
-        plt.savefig(output_file)
-        print(f"3D Sweep Chart saved to {output_file}")
+        # Fallback to trisurf if surface not drawn
+        if not surface_drawn:
+            try:
+                from scipy.spatial import Delaunay
+                import plotly.figure_factory as ff
+                points2d = np.column_stack((ts, ms))
+                tri = Delaunay(points2d)
+                fig_mesh = ff.create_trisurf(x=ts, y=ms, z=ttfts, simplices=tri.simplices, colormap='Viridis', show_colorbar=True)
+                for trace in fig_mesh.data:
+                    if trace.type == 'mesh3d':  # type: ignore[attr-defined]
+                        trace.opacity = 0.7  # type: ignore[attr-defined]
+                        trace.showscale = True  # type: ignore[attr-defined]
+                        trace.colorbar = dict(title='TTFT (s)')  # type: ignore[attr-defined]
+                        fig.add_trace(trace)
+            except Exception as e:
+                print(f"Could not plot trisurf fallback: {e}")
+        fig.update_layout(
+            scene=dict(
+                xaxis_title='X (Context Length, T)',
+                yaxis_title='Y (Prefill Chunk Size, M)',
+                zaxis_title='Z (TTFT, seconds)',
+                camera=dict(eye=dict(x=1.5, y=1.5, z=1.0))
+            ),
+            title='Impact of Context Length (T) and Chunk Size (M) on TTFT',
+            margin=dict(l=0, r=0, b=0, t=40)
+        )
+        show_or_save_plotly_figure(fig, output_file)
 
