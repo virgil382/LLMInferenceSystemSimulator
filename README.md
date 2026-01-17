@@ -17,8 +17,13 @@ A data transfer task $D$ (referred to as a `DataBatch`) is defined by its payloa
 $$T_D = \sum_{e \in P} L_e + \int_{0}^{S} \frac{1}{R(t)} ds$$
 where $R(t)$ is the instantaneous rate allocated to the batch at time $t$ based on network contention.
 
+[![Data Transfer Modeling](docs/DataTransferModeling.png)]
+
 ### 1.3 Computational Modeling
 A computation task $C$ (`ComputeJob`) is modeled as a time-delay $D_c$. Unlike data batches, computation tasks do not consume edge bandwidth but can trigger or be triggered by network events.
+
+[![Computational Modeling](docs/ComputationalModeling.png)]
+
 
 ---
 
@@ -34,6 +39,8 @@ $$\text{maximize } \min_{i} (r_i) \text{ s.t. } \sum_{i \in \text{users}(e)} r_i
 ---
 
 ## 3. System Architecture and Interfaces
+
+[![System Architecture and Interfaces](docs/SystemArchitectureAndInterfaces.png)]
 
 ### 3.1 The SimulatedSystem Interface
 The framework relies on an inversion-of-control pattern. Users must implement the `SimulatedSystem` interface to handle the lifecycle of tasks:
