@@ -1,5 +1,3 @@
-
-
 from Gantt5DVisualizer import Gantt5DVisualizer
 from simulator import CommNetworkSimulator, GPU, LLM
 from GanttVisualizer import GanttVisualizer
@@ -32,59 +30,59 @@ if __name__ == "__main__":
 
     pd_system = DisaggregatedPDSystemPP(**run_config)
 
-    # --- TTFT and TPOT extraction and Gantt visualization ---
-    sim = CommNetworkSimulator()
-    pd_system.start(sim)
-    sim.run(pd_system)
+    # # --- TTFT and TPOT extraction and Gantt visualization ---
+    # sim = CommNetworkSimulator()
+    # pd_system.start(sim)
+    # sim.run(pd_system)
 
-    ttft = pd_system.calculate_ttft(sim)
-    tpot = pd_system.calculate_tpot(sim)
+    # ttft = pd_system.calculate_ttft(sim)
+    # tpot = pd_system.calculate_tpot(sim)
 
-    if ttft is not None and tpot is not None:
-        print(f"TTFT (Time To First Token): {ttft:.6f} seconds")
-        print(f"TPOT (Time Per Output Token): {tpot:.6f} seconds")
-    else:
-        print("No decode jobs found for TTFT/TPOT calculation.")
+    # if ttft is not None and tpot is not None:
+    #     print(f"TTFT (Time To First Token): {ttft:.6f} seconds")
+    #     print(f"TPOT (Time Per Output Token): {tpot:.6f} seconds")
+    # else:
+    #     print("No decode jobs found for TTFT/TPOT calculation.")
 
-    print(f"Total Inference Latency: {sim.current_time:.4f} seconds")
-    print(f"Prefill VRAM Utilization: {pd_system.prefill_vram_util:.2f}%")
-    print(f"Decode VRAM Utilization: {pd_system.decode_vram_util:.2f}%")
+    # print(f"Total Inference Latency: {sim.current_time:.4f} seconds")
+    # print(f"Prefill VRAM Utilization: {pd_system.prefill_vram_util:.2f}%")
+    # print(f"Decode VRAM Utilization: {pd_system.decode_vram_util:.2f}%")
 
-    visualizer = GanttVisualizer(pd_system, 1.0)
-    visualizer.generate(sim)
+    # visualizer = GanttVisualizer(pd_system, 1.0)
+    # visualizer.generate(sim)
 
-    # --- Parameter Sweep (M and T)---
-    print("\n--- Running Parameter Sweep (3D Plot) ---")
+    # # --- Parameter Sweep (M and T)---
+    # print("\n--- Running Parameter Sweep (3D Plot) ---")
     
-    # Sweep T from 1024 to 8192 in steps of 1024
-    # M varies from 64 up to T
-    t_sweep_range = range(1024, 8192 + 1, 1024)
+    # # Sweep T from 1024 to 8192 in steps of 1024
+    # # M varies from 64 up to T
+    # t_sweep_range = range(1024, 8192 + 1, 1024)
     
-    sweeper = MTSweepVisualizer(
-        system_cls=DisaggregatedPDSystemPP,
-        base_config=system_config,
-        t_range=t_sweep_range,
-        m_start=64,  # Start value for M
-        m_step=128,  # Step size for M
-        m_end=2048   # Optional max value for M
-    )
+    # sweeper = MTSweepVisualizer(
+    #     system_cls=DisaggregatedPDSystemPP,
+    #     base_config=system_config,
+    #     t_range=t_sweep_range,
+    #     m_start=64,  # Start value for M
+    #     m_step=128,  # Step size for M
+    #     m_end=2048   # Optional max value for M
+    # )
     
-    results = sweeper.run_sweep()
-    sweeper.plot_3d(results, output_file="M_T_TTFT_sweep_3d.html")
+    # results = sweeper.run_sweep()
+    # sweeper.plot_3d(results, output_file="M_T_TTFT_sweep_3d.html")
 
-    # --- Parameter Sweep (PP and T)---
-    print("\n--- Running PP-T Sweep (3D Plot) ---")
-    pp_sweep_range = range(1, 9)  # Example: PP from 1 to 8
-    t_sweep_range = range(1024, 8192 + 1, 1024)
-    ppt_sweeper = PPTSweepVisualizer(
-        system_cls=DisaggregatedPDSystemPP,
-        base_config=system_config,
-        pp_range=pp_sweep_range,
-        t_range=t_sweep_range,
-        m_value=64
-    )
-    ppt_results = ppt_sweeper.run_sweep()
-    ppt_sweeper.plot_3d(ppt_results, output_file="PP_T_TTFT_sweep_3d.html")
+    # # --- Parameter Sweep (PP and T)---
+    # print("\n--- Running PP-T Sweep (3D Plot) ---")
+    # pp_sweep_range = range(1, 9)  # Example: PP from 1 to 8
+    # t_sweep_range = range(1024, 8192 + 1, 1024)
+    # ppt_sweeper = PPTSweepVisualizer(
+    #     system_cls=DisaggregatedPDSystemPP,
+    #     base_config=system_config,
+    #     pp_range=pp_sweep_range,
+    #     t_range=t_sweep_range,
+    #     m_value=64
+    # )
+    # ppt_results = ppt_sweeper.run_sweep()
+    # ppt_sweeper.plot_3d(ppt_results, output_file="PP_T_TTFT_sweep_3d.html")
 
     # --- 5D Interactive Gantt Visualizer (PP, M, T, N) ---
     print("\n--- Starting Interactive 5D Gantt Visualizer ---")
@@ -111,5 +109,9 @@ if __name__ == "__main__":
     else:
         # VS Code
         print("Point your browser to http://127.0.0.1:8050")
-        visualizer_5d = Gantt5DVisualizer(system_config)
+        visualizer_5d = Gantt5DVisualizer(
+            base_config=system_config,
+            slider_ranges=None,
+            height=700
+        )
         visualizer_5d.run(debug=False)

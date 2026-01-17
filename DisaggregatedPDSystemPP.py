@@ -259,14 +259,14 @@ class DisaggregatedPDSystemPP(SimulatedSystem):
     def calculate_ttft(self, simulator):
         decode_jobs = [job for job in simulator.completed_compute if job.name.startswith("D_Rank")]
         if not decode_jobs:
-            return None
+            return 0.0
         decode_jobs_sorted = sorted(decode_jobs, key=lambda j: j.end_time)
         return decode_jobs_sorted[0].start_time
 
     def calculate_tpot(self, simulator):
         decode_jobs = [job for job in simulator.completed_compute if job.name.startswith("D_Rank")]
         if not decode_jobs:
-            return None
+            return 0.0
         decode_jobs_sorted = sorted(decode_jobs, key=lambda j: j.end_time)
         first_decode_job = decode_jobs_sorted[0]
         last_decode_job = decode_jobs_sorted[-1]

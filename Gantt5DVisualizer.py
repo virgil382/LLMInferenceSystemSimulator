@@ -7,7 +7,7 @@ import pandas as pd
 
 
 class Gantt5DVisualizer:
-    def __init__(self, base_config, slider_ranges=None):
+    def __init__(self, base_config, slider_ranges=None, height=500):
         self.base_config = base_config
         # slider_ranges is a dict with keys: 'pp', 'm', 't', each value is a dict with min, max, step, marks_step
         default_ranges = {
@@ -15,14 +15,13 @@ class Gantt5DVisualizer:
             'm': {'min': 64, 'max': 2048, 'step': 64, 'marks_step': 256},
             't': {'min': 1024, 'max': 16384, 'step': 1024, 'marks_step': 2048},
             'n': {'min': 1, 'max': 128, 'step': 1, 'marks_step': 8},
+            'time_range': {'min': 0.0, 'max': 10.0, 'step': 0.01, 'marks_step': 1, 'default': [0.0, 2.0]},
         }
         self.slider_ranges = default_ranges if slider_ranges is None else {**default_ranges, **slider_ranges}
+        self.height = height
         self.app = dash.Dash(__name__)
-        # Inject CSS to hide slider labels
-        # self.app.index_string = self.app.index_string.replace(
-        #     '</head>',
-        #     '<style>.rc-slider-mark-text { display: none !important; }</style></head>'
-        # )
+        self.last_ttft = 0.0
+        self.last_tpot = 0.0
         self._setup_layout()
         self._setup_callbacks()
 
@@ -87,7 +86,7 @@ class Gantt5DVisualizer:
 
             ], style={'padding': '20px', 'backgroundColor': '#f9f9f9', 'borderRadius': '10px', 'marginBottom': '20px'}),
 
-            dcc.Graph(id='gantt-plot', style={'height': '900px'}),
+            dcc.Graph(id='gantt-plot', style={'height': f'{self.height}px'}),
             html.Div([
                 html.Label([
                     "Time Range: ",
@@ -95,15 +94,15 @@ class Gantt5DVisualizer:
                 ]),
                 dcc.RangeSlider(
                     id='time-range-slider',
-                    min=0.0,
-                    max=5.0,
-                    step=0.01,
-                    value=[0.0, 2.0],
+                    min=self.slider_ranges['time_range']['min'],
+                    max=self.slider_ranges['time_range']['max'],
+                    step=self.slider_ranges['time_range']['step'],
+                    value=self.slider_ranges['time_range']['default'],
                     allowCross=False,
-                    marks={i: str(i) for i in range(0, 6)},
+                    marks={i: str(i) for i in range(int(self.slider_ranges['time_range']['min']), int(self.slider_ranges['time_range']['max'])+1, self.slider_ranges['time_range']['marks_step'])},
                     tooltip={"placement": "bottom", "always_visible": True}
                 )
-            ], style={'marginTop': '30px'})
+            ], style={'marginTop': '0px'})
         ])
 
     def _parse_resource_from_name(self, name):
@@ -149,6 +148,11 @@ class Gantt5DVisualizer:
                 sim = CommNetworkSimulator()
                 pd_system.start(sim)
                 sim.run(pd_system)
+
+                # Query pd_system for TTFT and TPOT and save them in members for later use
+                self.last_ttft = pd_system.calculate_ttft(sim)
+                self.last_tpot = pd_system.calculate_tpot(sim)
+
             except Exception as e:
                 # Handle VRAM overflows or invalid configs gracefully
                 return go.Figure().update_layout(title=f"Invalid Configuration: {str(e)}"), pp, n, t, m, f"[{0.0}, {2.0}]"
@@ -175,7 +179,7 @@ class Gantt5DVisualizer:
             # 4. Build Figure
             fig = go.Figure()
             colors = {"Compute": "skyblue", "Transfer": "orange", "Other": "gray"}
-            
+
             for e in events:
                 fig.add_trace(go.Bar(
                     x=[e["end"] - e["start"]],
@@ -189,12 +193,41 @@ class Gantt5DVisualizer:
                     showlegend=False
                 ))
 
+            # Ensure ttft and tpot are always defined for the title, even if not drawing lines
+            ttft = self.last_ttft
+            tpot = self.last_tpot
+
+            # Add vertical lines for TTFT and TPOT if valid
+            if ttft > 0:
+                fig.add_vline(
+                    x=ttft,
+                    line_dash="dash",
+                    line_color="green",
+                    annotation_text="TTFT",
+                    annotation_position="top left"
+                )
+            if tpot > 0:
+                fig.add_vline(
+                    x=ttft + tpot,
+                    line_dash="dot",
+                    line_color="red",
+                    annotation_text="TTFT + TPOT",
+                    annotation_position="top right"
+                )
+
+
+            # Get GPU type info from pd_system's GPU objects
+            prefill_gpu_name = getattr(getattr(pd_system, 'prefill_gpu', None), 'name', None)
+            decode_gpu_name = getattr(getattr(pd_system, 'decode_gpu', None), 'name', None)
+            gpu_info = f" | Prefill GPU: {prefill_gpu_name}" if prefill_gpu_name else ""
+            gpu_info += f" | Decode GPU: {decode_gpu_name}" if decode_gpu_name else ""
+
             fig.update_layout(
-                title=f"Live Gantt: PP={pp}, N={n}, T={t}, M={m}",
+                title=f"Live Gantt: PP={pp}, N={n}, T={t}, M={m} | TTFT={ttft:.4f}s | TPOT={tpot:.6f}s{gpu_info}",
                 xaxis_title="Time (s)",
                 xaxis=dict(range=time_range),
                 yaxis=dict(categoryorder='array', categoryarray=sorted_res, automargin=True),
-                height=700,
+                height=self.height,
                 barmode='stack',
                 margin=dict(l=150)
             )
