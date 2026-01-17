@@ -44,8 +44,8 @@ $$\text{maximize } \min_{i} (r_i) \text{ s.t. } \sum_{i \in \text{users}(e)} r_i
 
 ### 3.1 The SimulatedSystem Interface
 The framework relies on an inversion-of-control pattern. Users must implement the `SimulatedSystem` interface to handle the lifecycle of tasks:
-- **`onDataTransferComplete(simulator, batch)`**: Invoked when a batch clears its path latency and its payload is fully serialized.
-- **`onComputeComplete(simulator, job)`**: Invoked when a computation's duration has elapsed.
+- **`on_data_transfer_complete(simulator, batch)`**: Invoked when a batch clears its path latency and its payload is fully serialized.  May return a `ComputeJob`, which the simulator adds to its `active_compute` set, or may add `ComputeJob`s directly.
+- **`on_compute_complete(simulator, job)`**: Invoked when a computation's duration has elapsed.
 
 ### 3.2 The Simulator Engine (`CommNetworkSimulator`)
 The engine maintains two active queues (`active_batches` and `active_compute`) and a historical log of completed tasks. It executes a time-stepping loop where $\Delta t$ is dynamically calculated based on the smallest significant temporal feature of the system.
