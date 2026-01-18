@@ -1,4 +1,4 @@
-from Gantt5DVisualizer import Gantt5DVisualizer
+from Gantt6DVisualizer import Gantt6DVisualizer
 from simulator import CommNetworkSimulator, GPU, LLM
 from GanttVisualizer import GanttVisualizer
 from MTSweepVisualizer import MTSweepVisualizer
@@ -91,9 +91,9 @@ if __name__ == "__main__":
         # Jupyter or Colab
         try:
             from jupyter_dash import JupyterDash  # type: ignore[import-unresolved]
-            import Gantt5DVisualizer as gantt5d_mod
+            import Gantt6DVisualizer as gantt6d_mod
             # Patch the class to use JupyterDash
-            class JupyterGantt5DVisualizer(gantt5d_mod.Gantt5DVisualizer):
+            class JupyterGantt6DVisualizer(gantt6d_mod.Gantt6DVisualizer):
                 def __init__(self, *args, **kwargs):
                     super().__init__(*args, **kwargs)
                     self.app = JupyterDash(__name__)
@@ -102,16 +102,16 @@ if __name__ == "__main__":
                     self._setup_callbacks()
                 def run(self, debug=False, port=8050):
                     self.app.run_server(mode='inline', debug=debug, port=port)
-            visualizer_5d = JupyterGantt5DVisualizer(system_config)
-            visualizer_5d.run(debug=False)
+            visualizer_6d = JupyterGantt6DVisualizer(system_config)
+            visualizer_6d.run(debug=False)
         except ImportError:
             print("JupyterDash is not installed. Please install it with 'pip install jupyter-dash'.")
     else:
         # VS Code
         print("Point your browser to http://127.0.0.1:8050")
-        visualizer_5d = Gantt5DVisualizer(
+        visualizer_6d = Gantt6DVisualizer(
             base_config=system_config,
             slider_ranges=None,
             height=700
         )
-        visualizer_5d.run(debug=False)
+        visualizer_6d.run(debug=False)

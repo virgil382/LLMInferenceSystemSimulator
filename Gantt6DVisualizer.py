@@ -6,7 +6,7 @@ from DisaggregatedPDSystemPP import DisaggregatedPDSystemPP
 import pandas as pd
 
 
-class Gantt5DVisualizer:
+class Gantt6DVisualizer:
     def __init__(self, base_config, slider_ranges=None, height=500):
         self.base_config = base_config
         # slider_ranges is a dict with keys: 'pp', 'm', 't', each value is a dict with min, max, step, marks_step
@@ -22,6 +22,8 @@ class Gantt5DVisualizer:
         self.app = dash.Dash(__name__)
         self.last_ttft = 0.0
         self.last_tpot = 0.0
+        # List of available GPU names from GPU class, sorted by name
+        self.available_gpus = sorted(GPU.available_gpus())
         self._setup_layout()
         self._setup_callbacks()
 
@@ -32,8 +34,35 @@ class Gantt5DVisualizer:
         ])
 
     def _setup_layout(self):
+        def _gpu_name(val):
+            from simulator import GPU
+            if isinstance(val, GPU):
+                return val.name
+            return val if isinstance(val, str) else self.available_gpus[0]
+
         self.app.layout = html.Div([
             html.H2("Dynamic 5D Gantt Visualizer"),
+
+            html.Div([
+                html.Div([
+                    html.Label("Prefill GPU Type"),
+                    dcc.Dropdown(
+                        id='prefill-gpu-dropdown',
+                        options=[{"label": name, "value": name} for name in self.available_gpus],
+                        value=_gpu_name(self.base_config.get('prefill_gpu', self.available_gpus[0])),
+                        clearable=False
+                    )
+                ], style={'width': '45%', 'display': 'inline-block', 'marginRight': '2%'}),
+                html.Div([
+                    html.Label("Decode GPU Type"),
+                    dcc.Dropdown(
+                        id='decode-gpu-dropdown',
+                        options=[{"label": name, "value": name} for name in self.available_gpus],
+                        value=_gpu_name(self.base_config.get('decode_gpu', self.available_gpus[0])),
+                        clearable=False
+                    )
+                ], style={'width': '45%', 'display': 'inline-block'}),
+            ], style={'marginBottom': '20px'}),
 
             html.Div([
                 html.Div([
@@ -136,13 +165,18 @@ class Gantt5DVisualizer:
             Input('n-slider', 'value'),
             Input('t-slider', 'value'),
             Input('m-slider', 'value'),
-            Input('time-range-slider', 'value')
+            Input('time-range-slider', 'value'),
+            Input('prefill-gpu-dropdown', 'value'),
+            Input('decode-gpu-dropdown', 'value')
         )
-        def update_chart(pp, n, t, m, time_range):
+        def update_chart(pp, n, t, m, time_range, prefill_gpu_name, decode_gpu_name):
             # 1. Update config and re-run simulation
             config = self.base_config.copy()
             config.update({"pp_degree": pp, "M": m, "T": t, "N": n})
-            
+            # Set GPU objects from dropdowns
+            config['prefill_gpu'] = GPU.from_name(prefill_gpu_name)
+            config['decode_gpu'] = GPU.from_name(decode_gpu_name)
+
             try:
                 pd_system = DisaggregatedPDSystemPP(**config)
                 sim = CommNetworkSimulator()
@@ -216,14 +250,8 @@ class Gantt5DVisualizer:
                 )
 
 
-            # Get GPU type info from pd_system's GPU objects
-            prefill_gpu_name = getattr(getattr(pd_system, 'prefill_gpu', None), 'name', None)
-            decode_gpu_name = getattr(getattr(pd_system, 'decode_gpu', None), 'name', None)
-            gpu_info = f" | Prefill GPU: {prefill_gpu_name}" if prefill_gpu_name else ""
-            gpu_info += f" | Decode GPU: {decode_gpu_name}" if decode_gpu_name else ""
-
             fig.update_layout(
-                title=f"Live Gantt: PP={pp}, N={n}, T={t}, M={m} | TTFT={ttft:.4f}s | TPOT={tpot:.6f}s{gpu_info}",
+                title=f"Live Gantt: PP={pp}, N={n}, T={t}, M={m} | TTFT={ttft:.4f}s | TPOT={tpot:.6f}s",
                 xaxis_title="Time (s)",
                 xaxis=dict(range=time_range),
                 yaxis=dict(categoryorder='array', categoryarray=sorted_res, automargin=True),
