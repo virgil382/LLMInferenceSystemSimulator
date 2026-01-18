@@ -6,8 +6,8 @@ This document defines a formal framework for simulating the performance of distr
 
 <table style="width:100%">
     <tr>
-        <td><img src="docs/M_T_TTFT_sweep_3d.png" width="200"/></td>
-        <td><img src="docs/PP_T_TTFT_sweep_3d.png" width="200"/></td>
+        <td><img src="docs/M_T_TTDS_sweep_3d.png" width="200"/></td>
+        <td><img src="docs/PP_T_TTDS_sweep_3d.png" width="200"/></td>
         <td><img src="docs/Dynamic_6D_Gantt_Visualizer.png" width="200"/></td>
     </tr>
 </table>

@@ -33,9 +33,9 @@ class PPTSweepVisualizer:
                     sim = CommNetworkSimulator()
                     pd_system.start(sim)
                     sim.run(pd_system)
-                    ttft = pd_system.calculate_ttft(sim)
-                    if ttft is not None:
-                        results.append((pp, t, ttft))
+                    ttds = pd_system.calculate_ttds(sim)
+                    if ttds is not None:
+                        results.append((pp, t, ttds))
                     else:
                         results.append((pp, t, np.nan))
                 except ValueError as e:
@@ -43,9 +43,9 @@ class PPTSweepVisualizer:
                     continue
         return results
 
-    def plot_3d(self, results, output_file="PP_T_TTFT_sweep_3d.html"):
+    def plot_3d(self, results, output_file="PP_T_TTDS_sweep_3d.html"):
         """
-        Generates a 3D surface plot of (PP, T) -> TTFT
+        Generates a 3D surface plot of (PP, T) -> TTDS
         """
         global np
         if not results:
@@ -57,13 +57,13 @@ class PPTSweepVisualizer:
             return
         pps = [r[0] for r in valid_results]
         ts = [r[1] for r in valid_results]
-        ttfts = [r[2] for r in valid_results]
+        ttds = [r[2] for r in valid_results]
         fig = go.Figure()
         fig.add_trace(go.Scatter3d(
-            x=pps, y=ts, z=ttfts,
+            x=pps, y=ts, z=ttds,
             mode='markers',
-            marker=dict(size=5, color=ttfts, colorscale='Viridis', colorbar=dict(title='TTFT (s)')),
-            name='TTFT Data'
+            marker=dict(size=5, color=ttds, colorscale='Viridis', colorbar=dict(title='TTDS (s)')),
+            name='TTDS Data'
         ))
         # Try to plot a surface for regular grid data
         try:
@@ -71,18 +71,18 @@ class PPTSweepVisualizer:
             unique_pps = np.unique(pps)
             unique_ts = np.unique(ts)
             grid_pps, grid_ts = np.meshgrid(unique_pps, unique_ts, indexing='ij')
-            grid_ttfts = np.full(grid_pps.shape, np.nan)
+            grid_ttds = np.full(grid_pps.shape, np.nan)
             for i, pp in enumerate(unique_pps):
                 for j, t in enumerate(unique_ts):
                     for k in range(len(pps)):
                         if pps[k] == pp and ts[k] == t:
-                            grid_ttfts[i, j] = ttfts[k]
+                            grid_ttds[i, j] = ttds[k]
             # Only plot if grid is fully populated (no nans)
-            if not np.isnan(grid_ttfts).any():
+            if not np.isnan(grid_ttds).any():
                 fig.add_trace(go.Surface(
                     x=grid_pps,
                     y=grid_ts,
-                    z=grid_ttfts,
+                    z=grid_ttds,
                     colorscale='Viridis',
                     opacity=0.7,
                     showscale=False,
@@ -96,10 +96,10 @@ class PPTSweepVisualizer:
             scene=dict(
                 xaxis_title='X (Pipeline Parallelism, PP)',
                 yaxis_title='Y (Context Length, T)',
-                zaxis_title='Z (TTFT, seconds)',
+                zaxis_title='Z (TTDS, seconds)',
                 camera=dict(eye=dict(x=1.5, y=1.5, z=1.0))
             ),
-            title='Impact of PP and T on TTFT (M=64)',
+            title=f'Impact of PP and T on Time to Decode Start (TTDS) | M={self.m_value}',
             margin=dict(l=0, r=0, b=0, t=40)
         )
         show_or_save_plotly_figure(fig, output_file)

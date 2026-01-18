@@ -20,7 +20,7 @@ class Gantt6DVisualizer:
         self.slider_ranges = default_ranges if slider_ranges is None else {**default_ranges, **slider_ranges}
         self.height = height
         self.app = dash.Dash(__name__)
-        self.last_ttft = 0.0
+        self.last_ttds = 0.0
         self.last_tpot = 0.0
         # List of available GPU names from GPU class, sorted by name
         self.available_gpus = sorted(GPU.available_gpus())
@@ -183,8 +183,8 @@ class Gantt6DVisualizer:
                 pd_system.start(sim)
                 sim.run(pd_system)
 
-                # Query pd_system for TTFT and TPOT and save them in members for later use
-                self.last_ttft = pd_system.calculate_ttft(sim)
+                # Query pd_system for TTDS and TPOT and save them in members for later use
+                self.last_ttds = pd_system.calculate_ttds(sim)
                 self.last_tpot = pd_system.calculate_tpot(sim)
 
             except Exception as e:
@@ -227,31 +227,69 @@ class Gantt6DVisualizer:
                     showlegend=False
                 ))
 
-            # Ensure ttft and tpot are always defined for the title, even if not drawing lines
-            ttft = self.last_ttft
+            # Ensure ttds and tpot are always defined for the title, even if not drawing lines
+            ttds = self.last_ttds
             tpot = self.last_tpot
+            ttft = ttds + tpot
 
-            # Add vertical lines for TTFT and TPOT if valid
-            if ttft > 0:
+            # Add vertical lines for TTDS and TTFT if valid
+            if ttds > 0:
                 fig.add_vline(
-                    x=ttft,
-                    line_dash="dash",
+                    x=ttds,
+                    line_dash="dot",
                     line_color="green",
-                    annotation_text="TTFT",
+                    annotation_text="TTDS",
                     annotation_position="top left"
                 )
             if tpot > 0:
                 fig.add_vline(
-                    x=ttft + tpot,
+                    x=ttft,
                     line_dash="dot",
                     line_color="red",
-                    annotation_text="TTFT + TPOT",
+                    annotation_text="TTFT (TTDS + TPOT)",
                     annotation_position="top right"
                 )
+                
+            # Draw a double-headed arrow between TTDS and TTFT, labeled TPOT
+            y_arrow = sorted_res[0] if sorted_res else 0
+            # Draw arrow at the top row (first resource)
+            top_resource = sorted_res[-1] if sorted_res else 0
+            fig.add_annotation(
+                x=ttft,
+                y=top_resource,
+                text="",
+                showarrow=True,
+                arrowhead=2,
+                arrowside="end+start",
+                axref="x",
+                ayref="y",
+                ax=ttds,
+                ay=top_resource,
+                xref="x",
+                yref="y",
+                arrowwidth=1,
+                arrowcolor="purple",
+                bgcolor="rgba(255,255,255,0.7)",
+                bordercolor="purple"
+            )
+
+            # Place label above the middle of the arrow
+            fig.add_annotation(
+                x=(ttds + ttft) / 2,
+                y=top_resource,
+                text="TPOT",
+                showarrow=False,
+                xref="x",
+                yref="y",
+                xanchor="center",
+                yanchor="bottom",
+                font=dict(color="black", size=12),
+                align="center"
+            )
 
 
             fig.update_layout(
-                title=f"Live Gantt: PP={pp}, N={n}, T={t}, M={m} | TTFT={ttft:.4f}s | TPOT={tpot:.6f}s",
+                title=f"Live Gantt: PP={pp}, N={n}, T={t}, M={m} | TTDS={ttds:.4f}s | TPOT={tpot:.6f}s | TTFT={ttft:.6f}s",
                 xaxis_title="Time (s)",
                 xaxis=dict(range=time_range),
                 yaxis=dict(categoryorder='array', categoryarray=sorted_res, automargin=True),

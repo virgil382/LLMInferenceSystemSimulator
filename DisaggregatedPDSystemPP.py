@@ -256,7 +256,15 @@ class DisaggregatedPDSystemPP(SimulatedSystem):
             return ComputeJob(f"D_Rank_{rank_idx+1}_Step_{step_idx}", self.T_decode())
         return None
 
-    def calculate_ttft(self, simulator):
+    def calculate_ttds(self, simulator):
+        """
+        Returns the time to decode start (TTDS).
+    
+        This method searches the simulator's completed compute jobs for those whose names start with "D_Rank" (decode jobs).
+        It sorts these jobs by their end time, then returns the start time of the job that finished first.
+        This is useful for measuring when the decode phase began for the earliest completed decode job.
+        If no decode jobs are found, returns 0.0.
+        """
         decode_jobs = [job for job in simulator.completed_compute if job.name.startswith("D_Rank")]
         if not decode_jobs:
             return 0.0

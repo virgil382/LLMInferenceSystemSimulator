@@ -35,14 +35,16 @@ if __name__ == "__main__":
     pd_system.start(sim)
     sim.run(pd_system)
 
-    ttft = pd_system.calculate_ttft(sim)
+    ttds = pd_system.calculate_ttds(sim)
     tpot = pd_system.calculate_tpot(sim)
+    ttft = ttds + tpot
 
-    if ttft is not None and tpot is not None:
-        print(f"TTFT (Time To First Token): {ttft:.6f} seconds")
+    if ttds is not None and tpot is not None:
+        print(f"TTDS (Time To Decode Start): {ttds:.6f} seconds")
         print(f"TPOT (Time Per Output Token): {tpot:.6f} seconds")
+        print(f"TTFT (Time To First Token): {ttft:.6f} seconds")
     else:
-        print("No decode jobs found for TTFT/TPOT calculation.")
+        print("No decode jobs found for TTDS/TPOT calculation.")
 
     print(f"Total Inference Latency: {sim.current_time:.4f} seconds")
     print(f"Prefill VRAM Utilization: {pd_system.prefill_vram_util:.2f}%")
@@ -68,7 +70,7 @@ if __name__ == "__main__":
     )
     
     results = sweeper.run_sweep()
-    sweeper.plot_3d(results, output_file="M_T_TTFT_sweep_3d.html")
+    sweeper.plot_3d(results, output_file="M_T_TTDS_sweep_3d.html")
 
     # --- Parameter Sweep (PP and T)---
     print("\n--- Running PP-T Sweep (3D Plot) ---")
@@ -79,10 +81,10 @@ if __name__ == "__main__":
         base_config=system_config,
         pp_range=pp_sweep_range,
         t_range=t_sweep_range,
-        m_value=64
+        m_value=320
     )
     ppt_results = ppt_sweeper.run_sweep()
-    ppt_sweeper.plot_3d(ppt_results, output_file="PP_T_TTFT_sweep_3d.html")
+    ppt_sweeper.plot_3d(ppt_results, output_file="PP_T_TTDS_sweep_3d.html")
 
     # --- 5D Interactive Gantt Visualizer (PP, M, T, N) ---
     print("\n--- Starting Interactive 5D Gantt Visualizer ---")
