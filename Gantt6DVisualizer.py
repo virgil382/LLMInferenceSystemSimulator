@@ -12,7 +12,7 @@ class Gantt6DVisualizer:
         # slider_ranges is a dict with keys: 'pp', 'm', 't', each value is a dict with min, max, step, marks_step
         default_ranges = {
             'pp': {'min': 1, 'max': 32, 'step': 1, 'marks_step': 1},
-            'm': {'min': 64, 'max': 2048, 'step': 64, 'marks_step': 256},
+            'm': {'min': 32, 'max': 2048, 'step': 32, 'marks_step': 256},
             't': {'min': 1024, 'max': 16384, 'step': 1024, 'marks_step': 2048},
             'n': {'min': 1, 'max': 128, 'step': 1, 'marks_step': 8},
             'time_range': {'min': 0.0, 'max': 10.0, 'step': 0.01, 'marks_step': 1, 'default': [0.0, 2.0]},
@@ -299,8 +299,8 @@ class Gantt6DVisualizer:
             )
             return fig, pp, n, t, m, f"[{time_range[0]}, {time_range[1]}]"
 
-    def run(self, debug=False, port=8050):
+    def run(self, debug=False, port=8050, host="127.0.0.1"):
         # Using threading or a separate process is possible, 
         # but for main.py we usually run it at the end.
-        self.app.run(debug=debug, port=port)
+        self.app.run(debug=debug, port=port, host=host)
         

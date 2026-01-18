@@ -1,4 +1,4 @@
-# Discrete-Event Simulation (DES) of Concurrent Communication and Computation in Distributed Systems
+# Discrete-Event Simulator (DES) for Concurrent Communication and Computation in Distributed Systems
 
 ## Abstract
 
@@ -11,9 +11,6 @@ This document defines a formal framework for simulating the performance of distr
         <td><img src="docs/Dynamic_6D_Gantt_Visualizer.png" width="200"/></td>
     </tr>
 </table>
-
-
-
 
 ---
 
@@ -159,7 +156,7 @@ sim.add_batch(DataBatch("Inputs", 10**7, [pci]))
 sim.run(RecursiveSystem())
 ```
 
-### Example 4: Multi-Stage Pipeline (HPC)
+### Example 4: Multi-Stage Pipeline
 *Goal: Model a multi-hop pipeline where data passes through various mediums (PCIe -> InfiniBand -> Ethernet).*
 
 ```python
@@ -181,3 +178,52 @@ sim.add_batch(DataBatch("Stage_1", 5*10**8, [pci]))
 sim.run(PipelineSystem())
 ```
 
+## 7. Disaggregated PD Systems with Pipeline Parallelism
+This section formalizes the principal use case of the simulator: the quantitative analysis of disaggregated pipeline-parallel (PP) LLM inference systems. The framework enables systematic exploration of system configurations through graphical outputs and interactive tools supporting six degrees of freedom. Both logical and physical abstractions are employed to accurately model and simulate the operational characteristics of the disaggregated PD system.
+
+### Logical View
+The logical view models the system in terms of the dimensionality and partitioning of `DataBatch` and `ComputeJob` objects. For example, a configuration with $\mathrm{PP}=4$ executing an LLM with group query attention (GQA) is illustrated below:
+![Logical View: DataBatch and ComputeJob Partitioning](docs/DisaggregatedPDSystemWithPP-LogicalView.png)
+
+### Physical View
+The physical view describes the explicit transport paths and constituent edges traversed by each `DataBatch`. For clarity, the diagram below omits the distinction between full-duplex communication channels, which in a rigorous model would be represented as separate `CommChannel` instances for each direction.
+![Physical View: DataBatch Transport Paths](docs/DisaggregatedPDSystemWithPP-PhysicalView.png)
+
+### DisaggregatedPDSystemPP
+The class `DisaggregatedPDSystemPP` implements the `start()` method, which creates the initial `ComputeJob` for the GPU of rank 0 in the prefill pipeline to kick-off the prefill process.  After that, a call to `CommNetworkSimulator.run()` starts the simulation.
+
+`DisaggregatedPDSystemPP` realizes the `SimulatedSystem` interface in order to receive calls to `on_compute_complete()` and `on_data_transfer_complete()` announcing the completion of `ComputeJob`s and `DataBatch` transfers.  `DisaggregatedPDSystemPP` handles these calls by creating addditional `ComputeJob`s and/or `DataBatch`es in order to orchestrate the disaggregated PD system's behavior.
+
+After the simuation completes, the user may access the start/time of each completed `ComputeJob` and `DataBatch` transfer via `CommNetworkSimulator.completed_compute[]` and `CommNetworkSimulator.completed_batches[]` in order to analyze the performance of the simulated system.
+
+### Analysis through Visualization
+To enable rigorous post-simulation analysis, the framework provides visualization modules that generate three-dimensional charts depicting the time to decode start (TTDS) as a function of key system parameters. In addition, an interactive Gantt chart visualizes the temporal evolution of all `ComputeJob` and `DataBatch` events, supporting detailed investigation of concurrency and resource allocation. The Gantt chart interface exposes six principal system parameters for user-driven exploration:
+- Prefill GPU type (e.g. `NVIDIA H100`, `NVIDIA RTX PRO 6000`, `AMD Instinct MI300A`, etc)
+- Decode GPU type (e.g. `NVIDIA H100`, `NVIDIA RTX PRO 6000`, `AMD Instinct MI300A`, etc)
+- Pipeline parallelism degree (PP)
+- Batch size ($N$)
+- Sequence length ($T$)
+- Prefill chunk size ($M$)
+
+
+#### Time to Decode Start (TTDS) Sensitivity to Prefill Chunking Chunk Size (M) and Context Length (T)
+The `MTSweepVisualizer` module systematically explores the impact of prefill chunk size ($M$) and context length ($T$) on the time to decode start (TTDS) in disaggregated LLM inference systems. By varying $M$ and $T$ across a user-defined grid, the visualizer generates 3D surface plots that reveal the interplay between chunking granularity and sequence length, as well as the sensitivity to variations in each. This analysis enables identification of optimal chunk sizes for minimizing TTDS under different workload scenarios, providing actionable insights for system configuration and scheduling.
+
+`MTSweepVisualizer` generate `M_T_TTDS_sweep_3d.html`, which the user may load in a browser to display and manipulate the 3D graph.
+
+![Data Transfer Modeling](docs/M_T_TTDS_sweep_3d.png)
+
+
+#### Time to Decode Start (TTDS) Sensitivity to Pipeline Parallelism Degree (PP) and Context Length (T)
+The `PPTSweepVisualizer` module investigates how the degree of pipeline parallelism ($\mathrm{PP}$) and context length ($T$) jointly affect TTDS. By sweeping $\mathrm{PP}$ and $T$ parameters, the tool produces visualizations that elucidate the trade-offs between increased parallelism and sequence processing latency. These results inform the selection of pipeline depth and context window size to achieve desired latency targets, supporting principled design of scalable inference architectures.
+
+`PPTSweepVisualizer` generate `PP_T_TTDS_sweep_3d.html`, which the user may load in a browser to display and manipulate the 3D graph.
+
+![Data Transfer Modeling](docs/PP_T_TTDS_sweep_3d.png)
+
+#### Interactive 6D Gantt Chart
+The `Gantt6DVisualizer` provides an interactive, high-dimensional visualization environment for analyzing the temporal dynamics of disaggregated LLM inference systems. This tool renders a Gantt chart that encodes the start and end times of all `ComputeJob` and `DataBatch` events, enabling detailed inspection of system concurrency and resource utilization. Users can manipulate six key system parameters—prefill GPU type, decode GPU type, pipeline parallelism degree (PP), batch size (N), sequence length (T), and prefill chunk size (M)—in real time. The visualizer computes and displays key performance metrics, including Time to Decode Start (TTDS), Time to First Token (TTFT), and Time per Output Token (TPOT), directly from the simulated event traces. This facilitates comprehensive scenario exploration, bottleneck identification, and sensitivity analysis of latency to various system parameters, making the tool a powerful instrument for both qualitative and quantitative performance evaluation.
+
+The `Gantt6DVisualizer` implements a webapp running in a local server to which the user may connect via a browser in order to use the tool. Note that the server listens on all interfaces to enable remote users to connect to it. This represents a security risk which you may wish to mitigate by modifying the code to only listen on `127.0.0.1`.
+
+![Data Transfer Modeling](docs/Dynamic_6D_Gantt_Visualizer.png)

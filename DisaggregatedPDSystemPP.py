@@ -25,7 +25,8 @@ class DisaggregatedPDSystemPP(SimulatedSystem):
         self.p_ib_lanes = [CommChannel("PCIe Gen5 x16") for _ in range(self.num_prefill_ib_cards)]
         self.p_ib_cables = [CommChannel("Infiniband NDR") for _ in range(self.num_prefill_ib_cards)]
         self.d_ib_cables = [CommChannel("Infiniband NDR") for _ in range(self.pp_d)]
-        self.d_eth_lanes = [CommChannel("PCIe Gen4") for _ in range(self.pp_d)]
+        self.d_ib_lanes = [CommChannel("PCIe Gen5 x16") for _ in range(self.pp_d)]
+        self.d_eth_lanes = [CommChannel("PCIe Gen5 x16") for _ in range(self.pp_d)]
         self.d_eth_cables = [CommChannel("Ethernet 100G") for _ in range(self.pp_d)]
 
         # VRAM Validation
@@ -51,6 +52,11 @@ class DisaggregatedPDSystemPP(SimulatedSystem):
         if total_mem_b > decode_limit:
              raise ValueError(f"Decode GPU OOM (> {self.vram_limit_ratio*100:.1f}%): Rank needs {total_mem_b/1e9:.2f} GB, but allowed is {decode_limit/1e9:.2f} GB (Total: {self.decode_gpu.vram_b/1e9:.2f} GB)")
         self.decode_vram_util = (total_mem_b / self.decode_gpu.vram_b) * 100
+
+    def start(self, simulator):
+        # Trigger the first prefill rank compute
+        compute_time = self.T_prefill()
+        simulator.add_compute(ComputeJob(f"P_Rank_0_Chunk_0", compute_time))
 
     def A_prefill(self):
         """
@@ -108,17 +114,15 @@ class DisaggregatedPDSystemPP(SimulatedSystem):
         Estimate decode time for one token step on a single rank.
         Dominated by VRAM bandwidth (loading weights + KV cache).
         """
-        # Weights per rank
-        weight_bytes = ((self.llm.W // self.llm.L) * (self.llm.L // self.pp_d)) * self.llm.B
-        # KV cache estimate (full context for worst case)
-        kv_bytes = self.llm.KV(self.N, self.T) // self.pp_d
         
         # Compute Time
         flops = 2 * self.N * (self.llm.W // self.pp_d)  # Linear layers
-        flops += 2 * self.N * self.T * (self.llm.H_model // self.pp_d) * self.llm.H_model # Attention
+        flops += 4 * self.N * self.T * (self.llm.L // self.pp_d) * self.llm.H_model # Attention
         t_compute = flops / self.decode_gpu.flops
         
         # Memory Time
+        weight_bytes = (self.llm.W * self.llm.B // self.pp_d)    # Weights
+        kv_bytes = self.llm.KV(self.N, self.T) // self.pp_d      # KV-cache reading
         t_memory = (weight_bytes + kv_bytes) / (self.decode_gpu.vram_bw_bps * 0.8)
         
         return max(t_compute, t_memory)
@@ -129,11 +133,6 @@ class DisaggregatedPDSystemPP(SimulatedSystem):
         """
         # Activation size for 1 token decode
         return self.N * 1 * self.llm.H_model * self.llm.B
-
-    def start(self, simulator):
-        # Trigger the first prefill rank compute
-        compute_time = self.T_prefill()
-        simulator.add_compute(ComputeJob(f"P_Rank_0_Chunk_0", compute_time))
 
     def on_compute_complete(self, simulator, job):
         """
@@ -212,7 +211,8 @@ class DisaggregatedPDSystemPP(SimulatedSystem):
             self.p_ib_lanes[ib_idx],    # PLX -> IB Card
             self.p_ib_cables[ib_idx],   # Prefill IB Card -> IB Switch
             self.d_ib_cables[r_idx],    # IB Switch -> Decode IB Card
-            self.d_gpu_lanes[r_idx]     # IB Card -> Decode GPU
+            self.d_ib_lanes[r_idx],     # Decode IB Card -> PLX
+            self.d_gpu_lanes[r_idx]     # PLX -> Decode GPU
         ]
         kv_handoff = self.KV_handoff()
         simulator.add_batch(DataBatch(f"Handoff_Rank_{r_idx}_Chunk_{c_idx}", 

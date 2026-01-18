@@ -110,10 +110,14 @@ if __name__ == "__main__":
             print("JupyterDash is not installed. Please install it with 'pip install jupyter-dash'.")
     else:
         # VS Code
-        print("Point your browser to http://127.0.0.1:8050")
+        import socket
+        fqdn = socket.getfqdn()
+        print(f"Point your browser to http://{fqdn}:8050 (or use any accessible IP address)")
         visualizer_6d = Gantt6DVisualizer(
             base_config=system_config,
             slider_ranges=None,
             height=700
         )
-        visualizer_6d.run(debug=False)
+        # Ensure the server listens on all interfaces
+        visualizer_6d.run(debug=False, host="0.0.0.0")
+    
