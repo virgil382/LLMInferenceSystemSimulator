@@ -41,7 +41,7 @@ class Gantt6DVisualizer:
             return val if isinstance(val, str) else self.available_gpus[0]
 
         self.app.layout = html.Div([
-            html.H2("Dynamic 5D Gantt Visualizer"),
+            html.H2("Dynamic 6D Gantt Visualizer"),
 
             html.Div([
                 html.Div([
