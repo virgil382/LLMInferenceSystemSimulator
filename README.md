@@ -207,6 +207,7 @@ To enable rigorous post-simulation analysis, the framework provides visualizatio
 - Sequence length ($T$)
 - Prefill chunk size ($M$)
 
+> **Limitation:** The present implementation permits independent specification of the pipeline parallelism degree ($\mathrm{PP}$) for both the prefill and decode pipelines. However, in a rigorous system, the decode pipeline should employ two-dimensional parallelism — specifically, a combination of pipeline parallelism ($\mathrm{PP}$) and tensor parallelism ($\mathrm{TP}$). Optimal performance requires that the degrees of $\mathrm{PP}$ and $\mathrm{TP}$ for the decode stage be selected jointly, reflecting the physical constraints and workload characteristics of the system.
 
 #### Time to Decode Start (TTDS) Sensitivity to Prefill Chunking Chunk Size (M) and Context Length (T)
 The `MTSweepVisualizer` module systematically explores the impact of prefill chunk size ($M$) and context length ($T$) on the time to decode start (TTDS) in disaggregated LLM inference systems. By varying $M$ and $T$ across a user-defined grid, the visualizer generates 3D surface plots that reveal the interplay between chunking granularity and sequence length, as well as the sensitivity to variations in each. This analysis enables identification of optimal chunk sizes for minimizing TTDS under different workload scenarios, providing actionable insights for system configuration and scheduling.
