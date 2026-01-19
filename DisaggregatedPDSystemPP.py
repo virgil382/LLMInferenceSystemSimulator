@@ -101,7 +101,7 @@ class DisaggregatedPDSystemPP(SimulatedSystem):
 
         # 2. Memory Time (VRAM BW)
         # We must read ALL weights for every chunk because they don't fit in cache.
-        weight_bytes = ((self.llm.W // self.llm.L) * L_rank) * self.llm.B
+        weight_bytes = (self.llm.W  * self.llm.B) // self.pp_p
         kv_bytes = self.llm.KV(N, T) // self.pp_p
         vram_util = 0.80
         t_memory = (weight_bytes + kv_bytes) / (self.prefill_gpu.vram_bw_bps * vram_util)
@@ -117,7 +117,7 @@ class DisaggregatedPDSystemPP(SimulatedSystem):
         
         # Compute Time
         flops = 2 * self.N * (self.llm.W // self.pp_d)  # Linear layers
-        flops += 4 * self.N * self.T * (self.llm.L // self.pp_d) * self.llm.H_model # Attention
+        flops += (4 * self.N * self.T * (self.llm.L // self.pp_d) * self.llm.H_model) // self.pp_d  # Attention
         t_compute = flops / self.decode_gpu.flops
         
         # Memory Time
