@@ -31,7 +31,7 @@ $$T_D = \sum_{e \in P} L_e + \int_{0}^{S} \frac{1}{R(t)} ds$$
 where $R(t)$ is the instantaneous rate allocated to the batch at time $t$ based on network contention.
 
 <div align="center">
-    <img src="docs/DataTransferModeling.png" alt="Data Transfer Modeling" style="width:70%;"/>
+    <img src="docs/DataTransferModeling.png" alt="Data Transfer Modeling" style="width:60%;"/>
 </div>
 
 The transfer rate $R(t)$ for a `DataBatch` $D$, is determined by selecting the minimum transfer rate along its path $P$.<br>
