@@ -26,8 +26,8 @@ A communication network is modeled as a set of edges $E$, where each edge $e \in
 ### 1.2 Data Transfer Modeling
 <table>
     <tr>
-        <td style="vertical-align:top; width:60%">
-            <img src="docs/DataTransferModeling.png" alt="Data Transfer Modeling"/>
+        <td style="vertical-align:top; width:50%">
+            <img src="docs/DataTransferModeling.png" alt="Data Transfer Modeling" width="100%"/>
         </td>
         <td style="vertical-align:top; width:60%">
             <div>
