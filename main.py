@@ -118,6 +118,6 @@ if __name__ == "__main__":
             slider_ranges=None,
             height=700
         )
-        # Ensure the server listens on all interfaces
-        visualizer_6d.run(debug=False, host="0.0.0.0")
+        # Ensure the server listens on the loopback interface
+        visualizer_6d.run(debug=False, host="127.0.0.1")
     

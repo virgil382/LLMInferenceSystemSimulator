@@ -24,11 +24,25 @@ A communication network is modeled as a set of edges $E$, where each edge $e \in
 - **Latency ($L_e$):** Propagation delay in seconds.
 
 ### 1.2 Data Transfer Modeling
-A data transfer task $D$ (referred to as a `DataBatch`) is defined by its payload size $S$ and a discrete path $P = \{e_1, e_2, \dots, e_k\}$. The total transfer time $T_D$ is the sum of the cumulative propagation delay and the serialization delay:
-$$T_D = \sum_{e \in P} L_e + \int_{0}^{S} \frac{1}{R(t)} ds$$
-where $R(t)$ is the instantaneous rate allocated to the batch at time $t$ based on network contention.
+<table>
+    <tr>
+        <td style="vertical-align:top; width:40%">
+            <img src="docs/DataTransferModeling.png" alt="Data Transfer Modeling"/>
+        </td>
+        <td style="vertical-align:top; width:60%">
+            <div>
+                A data transfer task $D$ (referred to as a <code>DataBatch</code>) is defined by its payload size $S$ and a discrete path $P = \{e_1, e_2, \dots, e_k\}$. The total transfer time $T_D$ is the sum of the cumulative propagation delay and the serialization delay:<br>
+                $$T_D = \sum_{e \in P} L_e + \int_{0}^{S} \frac{1}{R(t)} ds$$<br>
+                where $R(t)$ is the instantaneous rate allocated to the batch at time $t$ based on network contention.
+            </div>
+            <div style="margin-top:1em">
+                The transfer rate $R(t)$ for a <code>DataBatch</code> $D$, is determined by selecting the minimum transfer rate along its path $P$.<br>
+                The bandwidth of each $e_i \in P$ is evenly shared with other <code>DataBatch</code>es that may be using $e_i$ at time $𝑡$.
+            </div>
+        </td>
+    </tr>
+</table>
 
-![Data Transfer Modeling](docs/DataTransferModeling.png)
 
 ### 1.3 Computational Modeling
 A computation task $C$ (`ComputeJob`) is modeled as a time-delay $D_c$. Unlike data batches, computation tasks do not consume edge bandwidth but can trigger or be triggered by network events.
@@ -125,8 +139,8 @@ sim.run(SimpleSystem())
 *Goal: Demonstrate Max-Min Fairness where a slow link prevents a user from hogging a fast link.*
 
 ```python
-fast_link = CommChannel("NVLink") # 300GB/s
-slow_link = CommChannel("Ethernet 100G") # 10GB/s
+fast_link = CommChannel("NVLink")        # 300GB/s
+slow_link = CommChannel("Ethernet 100G") # 100GB/s
 
 # Batch A uses the fast link only
 # Batch B uses the fast link AND the slow link
@@ -227,6 +241,6 @@ The `PPTSweepVisualizer` module investigates how the degree of pipeline parallel
 #### Interactive 6D Gantt Chart
 The `Gantt6DVisualizer` provides an interactive, high-dimensional visualization environment for analyzing the temporal dynamics of disaggregated LLM inference systems. This tool renders a Gantt chart that encodes the start and end times of all `ComputeJob` and `DataBatch` events, enabling detailed inspection of system concurrency and resource utilization. Users can manipulate six key system parameters—prefill GPU type, decode GPU type, pipeline parallelism degree (PP), batch size (N), sequence length (T), and prefill chunk size (M)—in real time. The visualizer computes and displays key performance metrics, including Time to Decode Start (TTDS), Time to First Token (TTFT), and Time per Output Token (TPOT), directly from the simulated event traces. This facilitates comprehensive scenario exploration, bottleneck identification, and sensitivity analysis of latency to various system parameters, making the tool a powerful instrument for both qualitative and quantitative performance evaluation.
 
-The `Gantt6DVisualizer` implements a webapp running in a local server to which the user may connect via a browser in order to use the tool. Note that the server listens on all interfaces to enable remote users to connect to it. This represents a security risk which you may wish to mitigate by modifying the code to only listen on `127.0.0.1`.
+The `Gantt6DVisualizer` implements a webapp running in a local server to which the user may connect via a browser in order to use the tool.
 
 ![Data Transfer Modeling](docs/Dynamic_6D_Gantt_Visualizer.png)
