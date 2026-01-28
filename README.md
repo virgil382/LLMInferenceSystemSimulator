@@ -26,7 +26,7 @@ A communication network is modeled as a set of edges $E$, where each edge $e \in
 ### 1.2 Data Transfer Modeling
 <table>
     <tr>
-        <td style="vertical-align:top; width:40%">
+        <td style="vertical-align:top; width:60%">
             <img src="docs/DataTransferModeling.png" alt="Data Transfer Modeling"/>
         </td>
         <td style="vertical-align:top; width:60%">
@@ -35,6 +35,7 @@ A communication network is modeled as a set of edges $E$, where each edge $e \in
                 $$T_D = \sum_{e \in P} L_e + \int_{0}^{S} \frac{1}{R(t)} ds$$<br>
                 where $R(t)$ is the instantaneous rate allocated to the batch at time $t$ based on network contention.
             </div>
+            <br>
             <div style="margin-top:1em">
                 The transfer rate $R(t)$ for a <code>DataBatch</code> $D$, is determined by selecting the minimum transfer rate along its path $P$.<br>
                 The bandwidth of each $e_i \in P$ is evenly shared with other <code>DataBatch</code>es that may be using $e_i$ at time $𝑡$.
