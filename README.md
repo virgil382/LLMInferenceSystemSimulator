@@ -24,20 +24,13 @@ A communication network is modeled as a set of edges $E$, where each edge $e \in
 - **Latency ($L_e$):** Propagation delay in seconds.
 
 ### 1.2 Data Transfer Modeling
-<table>
-    <tr>
-        <td style="vertical-align:top; width:50%;">
-            <img src="docs/DataTransferModeling.png" alt="Data Transfer Modeling" style="width:100%;"/>
-        </td>
-        <td style="vertical-align:top; width:50%;">
-            <div>
-                A data transfer task $D$ (referred to as a <code>DataBatch</code>) is defined by its payload size $S$ and a discrete path $P = \{e_1, e_2, \dots, e_k\}$. The total transfer time $T_D$ is the sum of the cumulative propagation delay and the serialization delay:<br>
-                $$T_D = \sum_{e \in P} L_e + \int_{0}^{S} \frac{1}{R(t)} ds$$<br>
-                where $R(t)$ is the instantaneous rate allocated to the batch at time $t$ based on network contention.
-            </div>
-        </td>
-    </tr>
-</table>
+A data transfer task $D$ (referred to as a `DataBatch`) is defined by its payload size $S$ and a discrete path $P = \{e_1, e_2, \dots, e_k\}$. The total transfer time $T_D$ is the sum of the cumulative propagation delay and the serialization delay:
+
+$$T_D = \sum_{e \in P} L_e + \int_{0}^{S} \frac{1}{R(t)} ds$$
+
+where $R(t)$ is the instantaneous rate allocated to the batch at time $t$ based on network contention.
+
+![Data Transfer Modeling](docs/DataTransferModeling.png)
 
 The transfer rate $R(t)$ for a `DataBatch` $D$, is determined by selecting the minimum transfer rate along its path $P$.<br>
 The bandwidth of each $e_i \in P$ is evenly shared with other `DataBatch`es that may be using $e_i$ at time $𝑡$.
