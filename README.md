@@ -26,10 +26,10 @@ A communication network is modeled as a set of edges $E$, where each edge $e \in
 ### 1.2 Data Transfer Modeling
 <table>
     <tr>
-        <td style="vertical-align:top; width:50%">
+        <td style="vertical-align:top; width:60%">
             <img src="docs/DataTransferModeling.png" alt="Data Transfer Modeling" width="100%"/>
         </td>
-        <td style="vertical-align:top; width:60%">
+        <td style="vertical-align:top; width:40%">
             <div>
                 A data transfer task $D$ (referred to as a <code>DataBatch</code>) is defined by its payload size $S$ and a discrete path $P = \{e_1, e_2, \dots, e_k\}$. The total transfer time $T_D$ is the sum of the cumulative propagation delay and the serialization delay:<br>
                 $$T_D = \sum_{e \in P} L_e + \int_{0}^{S} \frac{1}{R(t)} ds$$<br>
